@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 300px;
+      padding: 10px;
+    }
+    .input-group {
+      margin: 10px 0;
+    }
+    .input-group input {
+      width: 100%;
+      margin: 5px 0;
+      padding: 5px;
+    }
+    .item {
+      margin: 10px 0;
+      padding: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      margin: 5px;
+      padding: 5px 10px;
+    }
+    .check-button {
+      width: 100%;
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .check-button:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+  <h3>网页监控助手</h3>
+  <div class="input-group">
+    <input type="text" id="urlInput" placeholder="输入URL地址">
+    <input type="text" id="xpathInput" placeholder="输入XPath路径">
+    <button id="addItem">添加监控</button>
+  </div>
+  <button id="checkNow" class="check-button">立即检查所有URL</button>
+  <div id="itemList"></div>
+  <script src="popup.js"></script>
+</body>
+</html> 
