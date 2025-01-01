@@ -33,8 +33,13 @@
       border-radius: 4px;
       cursor: pointer;
     }
-    .check-button:hover {
-      background-color: #45a049;
+    .button-group {
+      display: flex;
+      justify-content: space-between;
+      margin: 10px 0;
+    }
+    .import-input {
+      display: none;
     }
   </style>
 </head>
@@ -46,6 +51,11 @@
     <button id="addItem">添加监控</button>
   </div>
   <button id="checkNow" class="check-button">立即检查所有URL</button>
+  <div class="button-group">
+    <button id="exportData">导出配置</button>
+    <button id="importData">导入配置</button>
+  </div>
+  <input type="file" id="importInput" class="import-input" accept=".json">
   <div id="itemList"></div>
   <script src="popup.js"></script>
 </body>

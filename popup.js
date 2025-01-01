@@ -145,4 +145,102 @@ document.getElementById('checkNow').addEventListener('click', async () => {
       message: '检查失败: ' + error.message
     });
   }
+});
+
+// 添加导出功能
+document.getElementById('exportData').addEventListener('click', async () => {
+  try {
+    const { items = [] } = await chrome.storage.local.get('items');
+    
+    // 创建配置对象，包含版本信息
+    const config = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      items: items
+    };
+    
+    // 创建Blob
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    // 下载文件
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await chrome.downloads.download({
+      url: url,
+      filename: `webpage-monitor-config-${timestamp}.json`,
+      saveAs: true
+    });
+    
+    // 清理URL
+    URL.revokeObjectURL(url);
+    
+    chrome.notifications.create({
+      type: 'basic',
+      title: '导出成功',
+      message: '配置已成功导出'
+    });
+  } catch (error) {
+    chrome.notifications.create({
+      type: 'basic',
+      title: '导出失败',
+      message: error.message
+    });
+  }
+});
+
+// 添加导入功能
+document.getElementById('importData').addEventListener('click', () => {
+  document.getElementById('importInput').click();
+});
+
+document.getElementById('importInput').addEventListener('change', async (event) => {
+  try {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const text = await file.text();
+    const config = JSON.parse(text);
+    
+    // 验证配置文件格式
+    if (!config.version || !Array.isArray(config.items)) {
+      throw new Error('无效的配置文件格式');
+    }
+    
+    // 获取当前配置
+    const { items: currentItems = [] } = await chrome.storage.local.get('items');
+    
+    // 合并配置，去重
+    const newItems = [...currentItems];
+    for (const item of config.items) {
+      const exists = newItems.some(
+        existing => existing.url === item.url && existing.xpath === item.xpath
+      );
+      if (!exists) {
+        newItems.push(item);
+      }
+    }
+    
+    // 保存新配置
+    await chrome.storage.local.set({ items: newItems });
+    
+    // 刷新显示
+    displayItems();
+    
+    chrome.notifications.create({
+      type: 'basic',
+      
+      title: '导入成功',
+      message: `成功导入 ${config.items.length} 个监控项`
+    });
+  } catch (error) {
+    chrome.notifications.create({
+      type: 'basic',
+      
+      title: '导入失败',
+      message: error.message
+    });
+  } finally {
+    // 清空文件输入，允许重复导入同一文件
+    event.target.value = '';
+  }
 }); 

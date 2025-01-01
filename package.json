@@ -13,6 +13,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "monitor_webpage": "file:",
     "nodemailer": "^6.9.16"
   }
 }
