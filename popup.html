@@ -41,6 +41,19 @@
     .import-input {
       display: none;
     }
+    .danger-button {
+      background-color: #dc3545;
+      color: white;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+      width: 100%;
+    }
+    .danger-button:hover {
+      background-color: #c82333;
+    }
   </style>
 </head>
 <body>
@@ -55,8 +68,14 @@
     <button id="exportData">导出配置</button>
     <button id="importData">导入配置</button>
   </div>
+  <div class="button-group">
+    <button id="openAdmin" class="check-button" style="background-color: #2196F3;">打开后台管理</button>
+  </div>
   <input type="file" id="importInput" class="import-input" accept=".json">
   <div id="itemList"></div>
+  
+  <button id="deleteAll" class="danger-button">删除所有监控项</button>
+  
   <script src="popup.js"></script>
 </body>
 </html> 

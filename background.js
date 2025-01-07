@@ -7,25 +7,25 @@
 chrome.runtime.onInstalled.addListener(() => {
     // 获取当前时间
     const now = new Date();
-    
+
     // 设置下一个6点的时间
     let nextCheck = new Date(now);
     nextCheck.setHours(6, 0, 0, 0);
-    
+
     // 如果当前时间已经过了今天的6点，就设置为明天的6点
     if (now >= nextCheck) {
         nextCheck.setDate(nextCheck.getDate() + 1);
     }
-    
+
     // 计算从现在到下一次检查的分钟数
     const delayInMinutes = Math.floor((nextCheck - now) / 1000 / 60);
-    
+
     // 创建定时任务
     chrome.alarms.create('checkChanges', {
         delayInMinutes: delayInMinutes,
         periodInMinutes: 24 * 60 // 每24小时执行一次
     });
-    
+
     console.log(`定时任务已设置，将在每天早上6点执行检查。下次检查时间：${nextCheck.toLocaleString()}`);
 });
 
@@ -38,76 +38,155 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 });
 
-// 添加一个辅助函数来解析HTML
-async function parseHTML(text) {
-    return new Promise((resolve) => {
-        // 创建一个隐藏的iframe
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
+// 引入 diff-match-patch
+const DiffMatchPatch = require('diff-match-patch');
 
-        // 使用iframe的contentWindow来解析HTML
-        const doc = iframe.contentWindow.document;
-        doc.open();
-        doc.write(text);
-        doc.close();
-
-        // 返回解析后的document
-        resolve(doc);
-
-        // 清理iframe
-        setTimeout(() => {
-            document.body.removeChild(iframe);
-        }, 100);
-    });
-}
-
-// 添加一个辅助函数来比较文本差异
+// 修改 diffText 函数来使用 diff-match-patch
 function diffText(oldText, newText) {
-    const oldWords = oldText.split(/\s+/);
-    const newWords = newText.split(/\s+/);
+    // 辅助函数：清理HTML标签和多余空格
+    function cleanHtml(html) {
+        // 移除HTML标签
+        const textOnly = html.replace(/<[^>]+>/g, ' ')
+            // 移除多余空格
+            .replace(/\s+/g, ' ')
+            // 移除特殊字符
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&')
+            .trim();
+        return textOnly;
+    }
+    
+    // 清理并获取纯文本
+    // const oldTextContent = cleanHtml(oldText);
+    // const newTextContent = cleanHtml(newText);
+    const oldTextContent = oldText;
+    const newTextContent = newText;
+    
+    // 如果内容完全相同，直接返回
+    if (oldTextContent === newTextContent) {
+        return newTextContent;
+    }
+    
+    // 创建 diff-match-patch 实例
+    const dmp = new DiffMatchPatch();
+    
+    // 计算差异
+    const diffs = dmp.diff_main(oldTextContent, newTextContent);
+    
+    // 优化差异（合并相近的小块差异）
+    dmp.diff_cleanupSemantic(diffs);
+    
+    // 生成HTML格式的差异展示
     let result = '';
-    let i = 0, j = 0;
-
-    while (i < oldWords.length || j < newWords.length) {
-        if (i >= oldWords.length) {
-            // 剩余的都是新增的
-            result += `<span class="added">${newWords.slice(j).join(' ')}</span> `;
-            break;
-        }
-        if (j >= newWords.length) {
-            // 剩余的都是删除的
-            result += `<span class="removed">${oldWords.slice(i).join(' ')}</span> `;
-            break;
-        }
-        if (oldWords[i] === newWords[j]) {
-            result += oldWords[i] + ' ';
-            i++;
-            j++;
-        } else {
-            // 查找下一个匹配点
-            let nextMatch = -1;
-            for (let k = j + 1; k < newWords.length; k++) {
-                if (oldWords[i] === newWords[k]) {
-                    nextMatch = k;
-                    break;
-                }
-            }
-            if (nextMatch !== -1) {
-                // 找到了匹配，标记中间的为新增
-                result += `<span class="added">${newWords.slice(j, nextMatch).join(' ')}</span> `;
-                j = nextMatch;
-            } else {
-                // 没找到匹配，标记为删除
-                result += `<span class="removed">${oldWords[i]}</span> `;
-                i++;
-            }
+    for (const [type, text] of diffs) {
+        switch(type) {
+            case 1:  // 插入
+                result += `<span class="added">${text}</span>`;
+                break;
+            case -1: // 删除
+                result += `<span class="removed">${text}</span>`;
+                break;
+            case 0:  // 相同
+                result += text;
+                break;
         }
     }
+    
     return result;
 }
 
-// 修改checkChangesNow函数，使用新标签页方式
+// 在 checkChangesNow 函数前添加一个新的辅助函数
+async function checkSingleItem(item) {
+    console.group(`检查项目: ${item.url}`);
+    try {
+        console.log('XPath:', item.xpath);
+        console.log('上次内容:', item.lastContent);
+
+        // 创建新标签页
+        const tab = await chrome.tabs.create({
+            url: item.url,
+            active: false
+        });
+
+        // 等待页面加载完成
+        await new Promise(resolve => {
+            chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+                if (tabId === tab.id && info.status === 'complete') {
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    resolve();
+                }
+            });
+        });
+
+        // 在页面中执行XPath查询
+        const [result] = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (xpath) => {
+                const element = document.evaluate(
+                    xpath,
+                    document,
+                    null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE,
+                    null
+                ).singleNodeValue;
+                return element ? {
+                    textContent: element.textContent,
+                    outerHTML: element.outerHTML
+                } : null;
+            },
+            args: [item.xpath]
+        });
+
+        // 关闭标签页
+        await chrome.tabs.remove(tab.id);
+
+        if (!result.result) {
+            return {
+                type: 'warning',
+                message: `警告: 无法在 ${item.url} 中找到指定的元素 (XPath: ${item.xpath})`
+            };
+        }
+
+        const newContent = result.result.textContent;
+        const newHtml = result.result.outerHTML;
+        console.log('当前内容:', newContent);
+
+        if (newContent !== item.lastContent) {
+            console.log('🔄 检测到内容变化！');
+            return {
+                type: 'change',
+                data: {
+                    url: item.url,
+                    xpath: item.xpath,
+                    oldContent: item.lastContent,
+                    newContent: newContent,
+                    oldHtml: item.lastHtml,
+                    newHtml: newHtml
+                },
+                item: {
+                    ...item,
+                    lastContent: newContent,
+                    lastHtml: newHtml
+                }
+            };
+        }
+
+        console.log('✓ 内容未发生变化');
+        return { type: 'nochange' };
+    } catch (error) {
+        console.error('❌ 检查失败:', error);
+        return {
+            type: 'error',
+            message: `检查失败: ${item.url} - ${error.message}`
+        };
+    } finally {
+        console.groupEnd();
+    }
+}
+
+// 修改 checkChangesNow 函数来支持并行处理
 async function checkChangesNow() {
     console.group('检查变化详细日志');
     console.log('开始检查变化...');
@@ -115,96 +194,45 @@ async function checkChangesNow() {
     console.log('当前监控的项目数量:', items.length);
     console.table(items);
 
+    const BATCH_SIZE = 10; // 并行处理的数量
     const changes = [];
-    const warnings = [];  // 添加警告数组
+    const warnings = [];
+    const updatedItems = [...items];
 
-    for (const item of items) {
-        console.group(`检查项目: ${item.url}`);
-        try {
-            console.log('XPath:', item.xpath);
-            console.log('上次内容:', item.lastContent);
+    // 将项目分成多个批次
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const batch = items.slice(i, i + BATCH_SIZE);
+        console.log(`处理批次 ${i / BATCH_SIZE + 1}, 包含 ${batch.length} 个项目`);
 
-            // 创建新标签页
-            const tab = await chrome.tabs.create({
-                url: item.url,
-                active: false // 在后台打开
-            });
+        // 并行处理当前批次
+        const results = await Promise.all(batch.map(item => checkSingleItem(item)));
 
-            // 等待页面加载完成
-            await new Promise(resolve => {
-                chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-                    if (tabId === tab.id && info.status === 'complete') {
-                        chrome.tabs.onUpdated.removeListener(listener);
-                        resolve();
-                    }
-                });
-            });
+        // 处理结果
+        results.forEach((result, index) => {
+            const batchIndex = i + index;
 
-            // 在页面中执行XPath查询
-            const [result] = await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: (xpath) => {
-                    const element = document.evaluate(
-                        xpath,
-                        document,
-                        null,
-                        XPathResult.FIRST_ORDERED_NODE_TYPE,
-                        null
-                    ).singleNodeValue;
-                    return element ? {
-                        textContent: element.textContent,
-                        outerHTML: element.outerHTML
-                    } : null;
-                },
-                args: [item.xpath]
-            });
-
-            // 关闭标签页
-            await chrome.tabs.remove(tab.id);
-
-            if (!result.result) {
-                const warning = `警告: 无法在 ${item.url} 中找到指定的元素 (XPath: ${item.xpath})`;
-                console.warn('⚠️', warning);
-                warnings.push(warning);
-                console.groupEnd();
-                continue;
+            switch (result.type) {
+                case 'change':
+                    changes.push(result.data);
+                    updatedItems[batchIndex] = result.item;
+                    break;
+                case 'warning':
+                    warnings.push(result.message);
+                    break;
+                case 'error':
+                    warnings.push(result.message);
+                    break;
             }
-
-            const newContent = result.result.textContent;
-            const newHtml = result.result.outerHTML;
-            console.log('当前内容:', newContent);
-
-            if (newContent !== item.lastContent) {
-                console.log('🔄 检测到内容变化！');
-                changes.push({
-                    url: item.url,
-                    xpath: item.xpath,
-                    oldContent: item.lastContent,
-                    newContent: newContent,
-                    oldHtml: item.lastHtml,
-                    newHtml: newHtml
-                });
-
-                item.lastContent = newContent;
-                item.lastHtml = newHtml;
-            } else {
-                console.log('✓ 内容未发生变化');
-            }
-        } catch (error) {
-            console.error('❌ 检查失败:', error);
-        }
-        console.groupEnd();
+        });
     }
 
-    console.log('\n检查结果汇总:');
-    console.log('检查项目数:', items.length);
-    console.log('发现变化数:', changes.length);
-    console.table(changes);
+    // 更新存储
+    if (changes.length > 0) {
+        await chrome.storage.local.set({ items: updatedItems });
+    }
 
+    // 生成报告
     if (changes.length > 0 || warnings.length > 0) {
-        console.log('正在保存更新后的内容...');
-        await chrome.storage.local.set({ items });
-
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
         // 创建HTML内容
@@ -293,16 +321,24 @@ async function checkChangesNow() {
                 border-radius: 3px;
             }
             .added {
-                background-color: #e6ffe6;
-                color: #006400;
+                color: #008000;
+                background-color: #e8ffe8;
                 text-decoration: none;
-                padding: 2px;
+                padding: 2px 4px;
+                margin: 0 2px;
+                border-radius: 3px;
+                display: inline-block;
+                font-weight: bold;
             }
             .removed {
-                background-color: #ffe6e6;
-                color: #dc3545;
+                color: #cc0000;
+                background-color: #ffe8e8;
                 text-decoration: line-through;
-                padding: 2px;
+                padding: 2px 4px;
+                margin: 0 2px;
+                border-radius: 3px;
+                display: inline-block;
+                font-weight: bold;
             }
             .diff-html {
                 background-color: #f8f9fa;
@@ -313,10 +349,13 @@ async function checkChangesNow() {
                 font-family: monospace;
             }
             .diff-view {
-                border: 1px solid #ddd;
+                line-height: 1.8;
+                word-break: break-word;
+                white-space: pre-wrap;
+                background-color: #ffffff;
                 padding: 15px;
-                margin: 10px 0;
                 border-radius: 5px;
+                border: 1px solid #e0e0e0;
             }
         </style>
     </head>
@@ -342,7 +381,7 @@ async function checkChangesNow() {
                 <div class="content-diff">
                     <h4>文本内容变化：</h4>
                     <div class="diff-view">
-                        ${diffText(change.oldHtml, change.newHtml)}
+                    ${diffText(change.oldHtml, change.newHtml)}
                     </div>
                     <details>
                         <div class="diff-view">
@@ -366,17 +405,19 @@ async function checkChangesNow() {
 
         // 使用Data URL下载HTML文件
         const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
-
         await chrome.downloads.download({
             url: dataUrl,
             filename: `webpage-changes-${timestamp}.html`,
             saveAs: true
         });
-
-        console.log('✅ 文件已创建并开始下载');
     }
 
+    console.log('\n检查结果汇总:');
+    console.log('检查项目数:', items.length);
+    console.log('发现变化数:', changes.length);
+    console.table(changes);
     console.groupEnd();
+
     return {
         success: true,
         message: changes.length > 0 ?

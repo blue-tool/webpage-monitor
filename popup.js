@@ -243,4 +243,31 @@ document.getElementById('importInput').addEventListener('change', async (event) 
     // 清空文件输入，允许重复导入同一文件
     event.target.value = '';
   }
+});
+
+// 添加删除所有功能
+document.getElementById('deleteAll').addEventListener('click', async () => {
+    // 显示确认对话框
+    if (confirm('确定要删除所有监控项吗？此操作不可恢复！')) {
+        try {
+            // 清空存储
+            await chrome.storage.local.set({ items: [] });
+            
+            // 清空显示列表
+            document.getElementById('itemList').innerHTML = '';
+            
+            // 显示成功消息
+            alert('已删除所有监控项！');
+        } catch (error) {
+            console.error('删除失败:', error);
+            alert('删除失败: ' + error.message);
+        }
+    }
+});
+
+// 添加后台管理页面跳转
+document.getElementById('openAdmin').addEventListener('click', () => {
+    chrome.tabs.create({
+        url: chrome.runtime.getURL('admin.html')
+    });
 }); 

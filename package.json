@@ -4,7 +4,7 @@
   "description": "",
   "main": "background.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "start": "node server.js"
   },
   "keywords": [],
@@ -12,8 +12,12 @@
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "monitor_webpage": "file:",
-    "nodemailer": "^6.9.16"
+    "diff-match-patch": "^1.0.5",
+    "express": "^4.17.1",
+    "monitor_webpage": "file:"
+  },
+  "devDependencies": {
+    "jest": "^27.0.6",
+    "jest-environment-jsdom": "^27.0.6"
   }
 }
