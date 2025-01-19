@@ -38,9 +38,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 });
 
-// 引入 diff-match-patch
-const DiffMatchPatch = require('diff-match-patch');
-
 // 修改 diffText 函数来使用 diff-match-patch
 function diffText(oldText, newText) {
     
@@ -402,7 +399,7 @@ async function checkChangesNow() {
         <h2>🔄 内容变化 (${changes.length}处)</h2>
         ${changes.map(change => `
             <div class="change-item">
-                <div class="url">URL: ${change.url}</div>
+                <div class="url">URL: <a href="${change.url}" target="_blank">${change.url}</a></div>
                 <div class="xpath">XPath: ${change.xpath}</div>
                 <div class="content-diff">
                     <h4>文本内容变化：</h4>
