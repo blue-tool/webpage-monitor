@@ -43,24 +43,8 @@ const DiffMatchPatch = require('diff-match-patch');
 
 // 修改 diffText 函数来使用 diff-match-patch
 function diffText(oldText, newText) {
-    // 辅助函数：清理HTML标签和多余空格
-    function cleanHtml(html) {
-        // 移除HTML标签
-        const textOnly = html.replace(/<[^>]+>/g, ' ')
-            // 移除多余空格
-            .replace(/\s+/g, ' ')
-            // 移除特殊字符
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&')
-            .trim();
-        return textOnly;
-    }
     
     // 清理并获取纯文本
-    // const oldTextContent = cleanHtml(oldText);
-    // const newTextContent = cleanHtml(newText);
     const oldTextContent = oldText;
     const newTextContent = newText;
     
@@ -69,24 +53,19 @@ function diffText(oldText, newText) {
         return newTextContent;
     }
     
-    // 创建 diff-match-patch 实例
-    const dmp = new DiffMatchPatch();
-    
     // 计算差异
-    const diffs = dmp.diff_main(oldTextContent, newTextContent);
+    const diffs = diffContent(oldTextContent, newTextContent);
     
-    // 优化差异（合并相近的小块差异）
-    dmp.diff_cleanupSemantic(diffs);
     
     // 生成HTML格式的差异展示
     let result = '';
     for (const [type, text] of diffs) {
         switch(type) {
             case 1:  // 插入
-                result += `<span class="added">${text}</span>`;
+                result += `<div><span class="added">${text}</span></div>`;
                 break;
             case -1: // 删除
-                result += `<span class="removed">${text}</span>`;
+                result += `<div><span class="removed">${text}</span></div>`;
                 break;
             case 0:  // 相同
                 result += text;
@@ -95,6 +74,53 @@ function diffText(oldText, newText) {
     }
     
     return result;
+}
+
+// 计算两个文本的差异
+function diffContent(oldText, newText) {
+    // 将文本分割成单词数组，便于比较
+    const oldWords = oldText.split(/\n/);
+    const newWords = newText.split(/\n/);
+    
+    // 创建LCS矩阵
+    const matrix = Array(oldWords.length + 1).fill().map(() => 
+        Array(newWords.length + 1).fill(0)
+    );
+    
+    // 填充LCS矩阵
+    for (let i = 1; i <= oldWords.length; i++) {
+        for (let j = 1; j <= newWords.length; j++) {
+            if (oldWords[i-1] === newWords[j-1]) {
+                matrix[i][j] = matrix[i-1][j-1] + 1;
+            } else {
+                matrix[i][j] = Math.max(matrix[i-1][j], matrix[i][j-1]);
+            }
+        }
+    }
+    
+    // 回溯矩阵生成差异
+    const diffs = [];
+    let i = oldWords.length;
+    let j = newWords.length;
+    
+    while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && oldWords[i-1] === newWords[j-1]) {
+            // 相同的文本
+            diffs.unshift([0, oldWords[i-1] + ' ']);
+            i--;
+            j--;
+        } else if (j > 0 && (i === 0 || matrix[i][j-1] >= matrix[i-1][j])) {
+            // 新增的文本
+            diffs.unshift([1, newWords[j-1] + ' ']);
+            j--;
+        } else if (i > 0 && (j === 0 || matrix[i][j-1] < matrix[i-1][j])) {
+            // 删除的文本
+            diffs.unshift([-1, oldWords[i-1] + ' ']);
+            i--;
+        }
+    }
+    
+    return diffs;
 }
 
 // 在 checkChangesNow 函数前添加一个新的辅助函数
@@ -381,7 +407,7 @@ async function checkChangesNow() {
                 <div class="content-diff">
                     <h4>文本内容变化：</h4>
                     <div class="diff-view">
-                    ${diffText(change.oldHtml, change.newHtml)}
+                    ${diffText(change.oldContent, change.newContent)}
                     </div>
                     <details>
                         <div class="diff-view">
